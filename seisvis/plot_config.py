@@ -4,7 +4,7 @@
 import matplotlib
 from .opendtect_colormaps import OpendtectColormaps
 
-class PlotConfig:
+class PlotConfig:   
     """Configuration class for plotting, providing centralized style management"""
     
     def __init__(self):
@@ -42,8 +42,11 @@ class PlotConfig:
         matplotlib.rcParams['figure.dpi'] = self.figure_dpi
         
     def get_cmap(self, name="Petrel"):
-        od_cmaps = OpendtectColormaps()
-        return od_cmaps(name)
+        try:
+            return matplotlib.pyplot.get_cmap(name)
+        except ValueError:
+            od_cmaps = OpendtectColormaps()
+            return od_cmaps(name)
     
     def cmaps(self):
         od_cmaps = OpendtectColormaps()

@@ -158,6 +158,7 @@ class Seis2DPlotter:
             slice_2d_func = lambda cube: cube[il_idx, :, :].T
             horizon_filter = lambda df: df.loc[df.X == section_idx]
             x_label = "Crossline"
+            z_axis_label = None
             title = f"Inline {section_idx}"
             extent = self.extent_inline_2d
         elif section_type == 'xline':
@@ -166,20 +167,22 @@ class Seis2DPlotter:
             slice_2d_func = lambda cube: cube[:, xl_idx, :].T
             horizon_filter = lambda df: df.loc[df.Y == section_idx]
             x_label = "Inline"
+            z_axis_label = None
             title = f"Crossline {section_idx}"
             extent = self.extent_xline_2d
         elif section_type == 'time':
             t_idx = section_idx
             slice_2d_func = lambda cube: cube[:, :, t_idx]
             horizon_filter = None  
-            x_label = "Inline"
+            x_label = "Crossline"
+            z_axis_label="Inline"
             title = f"Time Slice {section_idx}"
             extent = self.extent_surface  
     
         else:
             raise ValueError("section_type must be 'inline', 'xline', or 'time'")
         
-        return slice_2d_func, horizon_filter, x_label, title, extent    
+        return slice_2d_func, horizon_filter, x_label, title, extent, z_axis_label    
                
     def plot_section(self, 
         section_idx=None,
@@ -197,8 +200,10 @@ class Seis2DPlotter:
         "Plot a 2D section (slice) from a 3D seismic or property cube."
         fig, ax = plt.subplots(figsize=figsize)
         
-        slice_2d_func, horizon_filter, x_label, title, extent = self._extract_slice(section_idx, section_type, 
+        slice_2d_func, horizon_filter, x_label, title, extent, z_axis_label = self._extract_slice(section_idx, section_type, 
                                                                             self.size[0], self.size[2])
+        if z_axis_label is None:
+            z_axis_label = t_axis_label
         
         if show_seismic_type is not None:
             seis = self.cube.get('seismic', show_seismic_type['type'])
@@ -301,7 +306,7 @@ class Seis2DPlotter:
         
         # Labels & title
         ax.set_xlabel(x_label, **self.config.label_style)
-        ax.set_ylabel(t_axis_label, **self.config.label_style)
+        ax.set_ylabel(z_axis_label, **self.config.label_style)
         ax.set_title(title, **self.config.title_style)
         
   
@@ -328,6 +333,7 @@ class Seis2DPlotter:
         y_axis_label="Time (ms)",
         x_label="Trace",
         figsize: Tuple[int, int] = (10, 4),
+        extent=None,
         show_colorbar=True,
         save_path=None,
         **kwargs
@@ -344,8 +350,9 @@ class Seis2DPlotter:
         dim = self.cube.get_dim(category, show_type['type'])
         
         if dim != 2:
-            raise ValueError(f"plot_2d_section expects 2D data, got {dim}D for '{show_type['category']}':'{show_type['type']}'.\n"
-                             f"If you want to plot a slice from 3D data, please use plot_section instead.")
+            raise ValueError(f"plot_2d_section expects 2D data, got {dim}D for "
+                             f"'{show_type['category']}':'{show_type['type']}'.\n"
+                             "If you want to plot a slice from 3D data, please use plot_section instead.")
         data_2d = self.cube.get(category, show_type['type'])
         # Setup figure
         fig, ax = plt.subplots(figsize=figsize)
@@ -353,9 +360,10 @@ class Seis2DPlotter:
         # Clipping
         clip = self._get_clip_values(data_2d, show_type['clip'])
         
-        extent = self.size
+        # extent = data_2d.shape
+        
         if extent is None:
-            extent = [0, data_2d.shape[1], 0, data_2d.shape[0]]
+            extent = [0, data_2d.shape[1], data_2d.shape[0], 0]
         
         # Main section plot
         c = ax.imshow(
@@ -416,4 +424,120 @@ class Seis2DPlotter:
             plt.savefig(save_path, dpi=self.config.figure_dpi, bbox_inches='tight')
         
         plt.show()
+        
+    def plot_2d_section_plus(self,
+        show_seismic_type: Optional[SeismicType] = None,
+        show_properties_type: Optional[Union[SeismicType, list]] = None,  
+        show_wells_type: Optional[SeismicType] = None,
+        y_axis_label="Time (ms)",
+        x_label="Trace",
+        show_labels=True,
+        figsize: Tuple[int, int] = (10, 4),
+        extent=None,
+        show_colorbar=True,
+        ncols: int = 0, 
+        save_path=None,
+        **kwargs
+    ):
+        """
+        Plot one or multiple 2D property/seismic sections.
+        If `show_properties_type` is a list, multiple panels will be plotted in one figure.
+        """
+        # === Determine data category ===
+        show_type = show_seismic_type or show_properties_type
+        if show_seismic_type is not None:
+            category = 'seismic'
+        elif show_properties_type is not None:
+            category = 'properties'
+        else:
+            raise ValueError("Unknown data")
+    
+        # === Handle multiple properties ===
+        if isinstance(show_properties_type, list):
+            prop_list = show_properties_type
+            n = len(prop_list)
+            if ncols <= 0:
+                ncols = int(np.ceil(np.sqrt(n)))
+            nrows = int(np.ceil(n / ncols))
+            fig, axes = plt.subplots(nrows, ncols, figsize=(figsize[0]*ncols, figsize[1]*nrows))
+            axes = np.atleast_2d(axes)
+    
+            for i, show_type in enumerate(prop_list):
+                r, c = divmod(i, ncols)
+                ax = axes[r, c]
+    
+                dim = self.cube.get_dim(category, show_type['type'])
+                if dim != 2:
+                    raise ValueError(f"plot_2d_section expects 2D data, got {dim}D for "
+                                     f"'{category}:{show_type['type']}'.")
+    
+                data_2d = self.cube.get(category, show_type['type'])
+                clip = self._get_clip_values(data_2d, show_type['clip'])
+                if extent is None:
+                    extent_local = [0, data_2d.shape[1], data_2d.shape[0], 0]
+                else:
+                    extent_local = extent
+    
+                cax = ax.imshow(
+                    data_2d, aspect='auto', cmap=self.config.get_cmap(show_type['cmap']),
+                    vmin=clip[0], vmax=clip[1], extent=extent_local, origin='upper', **kwargs
+                )
+                ax.set_xlim(extent_local[0], extent_local[1])
+                ax.set_ylim(extent_local[2], extent_local[3])
+                if show_labels:
+                    ax.set_title(show_type['type'], **self.config.label_style)
+                    ax.set_xlabel(x_label, **self.config.label_style)
+                    ax.set_ylabel(y_axis_label, **self.config.label_style)
+                else:
+                    ax.set_xticks([])
+                    ax.set_yticks([])   
+                    
+                if show_colorbar:
+                    fig.colorbar(cax, ax=ax, aspect=30, shrink=1.0, pad=0.01)
+    
+            # Remove empty subplots
+            for j in range(i+1, nrows*ncols):
+                r, c = divmod(j, ncols)
+                axes[r, c].axis('off')
+    
+            plt.tight_layout()
+            if save_path:
+                plt.savefig(save_path, dpi=self.config.figure_dpi, bbox_inches='tight')
+            plt.show()
+            return
+    
+        # === Single property/seismic plot===
+        dim = self.cube.get_dim(category, show_type['type'])
+        if dim != 2:
+            raise ValueError(f"plot_2d_section expects 2D data, got {dim}D for "
+                             f"'{show_type['category']}':'{show_type['type']}'.")
+    
+        data_2d = self.cube.get(category, show_type['type'])
+        fig, ax = plt.subplots(figsize=figsize)
+        clip = self._get_clip_values(data_2d, show_type['clip'])
+    
+        if extent is None:
+            extent = [0, data_2d.shape[1], data_2d.shape[0], 0]
+    
+        c = ax.imshow(
+            data_2d, aspect='auto', cmap=self.config.get_cmap(show_type['cmap']),
+            vmin=clip[0], vmax=clip[1],
+            extent=extent, origin='upper', **kwargs
+        )
+    
+        if show_colorbar:
+            cbar = fig.colorbar(c, ax=ax, aspect=30, shrink=1.0, pad=0.01)
+            if show_type['unit_label'] is not None:
+                cbar.set_label(show_type['unit_label'], **self.config.label_style, labelpad=2)
+    
+        ax.set_xlim(extent[0], extent[1])
+        ax.set_ylim(extent[2], extent[3])
+        ax.set_xlabel(x_label, **self.config.label_style)
+        ax.set_ylabel(y_axis_label, **self.config.label_style)
+        plt.tight_layout()
+    
+        if save_path:
+            plt.savefig(save_path, dpi=self.config.figure_dpi, bbox_inches='tight')
+        plt.show()
+
 

@@ -48,3 +48,7 @@ class DataCube:
         print("DataCube Information:")
         for category, content in self.data.items():
             print(f"- {category}: {list(content.keys())}")
+            
+    def clear(self):
+        for key in self.data:
+            self.data[key].clear()

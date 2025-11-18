@@ -297,17 +297,17 @@ class Seis3DPlotter:
         ax.set_ylabel(labels[1], **self.config.label_style)
         ax.set_zlabel(labels[2], **self.config.label_style)
 
-        # Set axis limits (inverted for seismic convention)
+        # Set axis limits (inverted for seismic convention except xline)
         ax.set_xlim(self.size[1], self.size[0])
-        ax.set_ylim(self.size[3], self.size[2])
+        ax.set_ylim(self.size[2], self.size[3])
         ax.set_zlim(self.size[4], self.size[5])
 
         # Enhanced visual styling
         ax.xaxis.pane.set_visible(False)
         ax.yaxis.pane.set_visible(False)
         ax.zaxis.pane.set_visible(False)
-        # ax.grid(False)
-        ax.grid(True, alpha=self.config.grid_alpha)
+        ax.grid(False)
+        # ax.grid(True, alpha=self.config.grid_alpha)
 
         # Apply lighting effects
         if lighting:
@@ -331,9 +331,11 @@ class Seis3DPlotter:
             cbar.set_label(unit_label, **self.config.label_style, labelpad=2)
         cbar.ax.tick_params(labelsize=self.config.tick_labelsize)
 
+        # ax.set_axis_off()
 
         plt.tight_layout()
         plt.show()
+        
 
         # Save figure if requested
         if save_path:
